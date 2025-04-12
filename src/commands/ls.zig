@@ -51,11 +51,26 @@ pub const Sort = enum {
     // created,
     // modified,
     name,
+
+    pub fn fromShorthand(char: u8) ?Sort {
+        return switch (char) {
+            'n' => .name,
+            else => null,
+        };
+    }
 };
 
 pub const Order = enum {
     ascending,
     descending,
+
+    pub fn fromShorthand(char: u8) ?Order {
+        return switch (char) {
+            'a' => .ascending,
+            'd' => .descending,
+            else => null,
+        };
+    }
 };
 
 pub const SortContext = struct {
@@ -144,12 +159,18 @@ pub fn exec(allocator: std.mem.Allocator, args_iterator: *std.process.ArgIterato
         },
         .sort => {
             const next_arg = args_iterator.next() orelse return Error.MissingArgument;
-            input_sort = std.meta.stringToEnum(Sort, next_arg) orelse return Error.BadSort;
+            input_sort = if (next_arg.len == 1)
+                Sort.fromShorthand(next_arg[0]) orelse return Error.BadSort
+            else
+                std.meta.stringToEnum(Sort, next_arg) orelse return Error.BadSort;
             continue :process_flag .init;
         },
         .order => {
             const next_arg = args_iterator.next() orelse return Error.MissingArgument;
-            input_order = std.meta.stringToEnum(Order, next_arg) orelse return Error.BadOrder;
+            input_order = if (next_arg.len == 1)
+                Order.fromShorthand(next_arg[0]) orelse return Error.BadOrder
+            else
+                std.meta.stringToEnum(Order, next_arg) orelse return Error.BadOrder;
             continue :process_flag .init;
         },
     }
