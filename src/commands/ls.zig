@@ -2,6 +2,7 @@ const std = @import("std");
 
 const OnoIgnore = @import("../OnoIgnore.zig");
 const Task = @import("../Task.zig");
+const DirWalker = @import("../DirWalker.zig");
 
 const createHelpScreenSection = @import("../help_screen.zig").createHelpScreenSection;
 
@@ -76,16 +77,6 @@ pub const Order = enum {
 pub const SortContext = struct {
     sort: Sort,
     order: Order,
-};
-
-pub const FileTask = struct {
-    path: []const u8,
-    task: Task,
-
-    pub fn deinit(self: FileTask, allocator: std.mem.Allocator) void {
-        self.task.deinit(allocator);
-        allocator.free(self.path);
-    }
 };
 
 pub fn exec(allocator: std.mem.Allocator, args_iterator: *std.process.ArgIterator, stdout_writer: anytype, stderr_writer: anytype) !void {
@@ -191,82 +182,38 @@ pub fn exec(allocator: std.mem.Allocator, args_iterator: *std.process.ArgIterato
         .name => .ascending,
     };
 
-    var file_tasks: std.ArrayListUnmanaged(FileTask) = .empty;
+    var file_tasks: std.ArrayListUnmanaged(DirWalker.FileTask) = .empty;
     defer file_tasks.deinit(allocator);
     defer for (file_tasks.items) |file_task| file_task.deinit(allocator);
+
+    var dir_walker: DirWalker = .init(allocator, &file_tasks);
+    defer dir_walker.deinit(allocator);
+
+    dir_walker.filter = .{
+        .maybe_query = input_query,
+        .tags = input_tags.items,
+    };
 
     for (input_paths.items) |path| {
         _ = std.fs.cwd().statFile(path) catch |e| switch (e) {
             error.IsDir => {
-                var root_directory = try std.fs.cwd().openDir(path, .{ .iterate = true });
-                defer root_directory.close();
+                var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
+                defer dir.close();
 
-                var walker = try root_directory.walk(allocator);
-                defer walker.deinit();
-
-                // var global_ono_ignore: OnoIgnore = .{ .ignore_list = &.{} };
-
-                while (try walker.next()) |walk_entry| {
-                    // if (global_ono_ignore.isPathIgnored(walk_entry.path)) {
-                    //     _ = walker.stack.pop();
-                    //     continue;
-                    // }
-
-                    switch (walk_entry.kind) {
-                        .directory => {
-                            if (!input_recursive) {
-                                _ = walker.stack.pop();
-                                continue;
-                            }
-                            // const sub_ono_ignore = walk_entry.dir.openFile("ono_ignore", .{}) catch |e| switch (e) {
-                            //     error.FileNotFound => continue,
-                            //     else => return e,
-                            // };
-
-                            // const ignore_data = try sub_ono_ignore.readToEndAlloc(allocator, std.math.maxInt(usize));
-                            // defer allocator.free(ignore_data);
-
-                            // const ono_ignore = try OnoIgnore.parseOnoIgnoreAlloc(allocator, ignore_data);
-                            // defer ono_ignore.deinit(allocator);
-                        },
-                        .file => {
-                            if (!std.mem.eql(u8, std.fs.path.extension(walk_entry.path), ".ono")) continue;
-
-                            var file = try root_directory.openFile(walk_entry.path, .{});
-                            defer file.close();
-
-                            const task: Task = try Task.initFromFile(allocator, file);
-                            errdefer task.deinit(allocator);
-                            const duped_path = try std.fs.path.join(allocator, &.{ path, walk_entry.path });
-                            errdefer allocator.free(duped_path);
-                            try file_tasks.append(allocator, .{
-                                .task = task,
-                                .path = duped_path,
-                            });
-                        },
-                        else => {},
-                    }
-                }
-                continue;
+                try dir_walker.walkDirectory(dir);
             },
             else => return e,
         };
 
         if (!std.mem.eql(u8, std.fs.path.extension(path), ".ono")) continue;
+
         var file = try std.fs.cwd().openFile(path, .{});
         defer file.close();
 
-        const task: Task = try Task.initFromFile(allocator, file);
-        errdefer task.deinit(allocator);
-        const duped_path = try allocator.dupe(u8, path);
-        errdefer allocator.free(duped_path);
-        try file_tasks.append(allocator, .{
-            .task = task,
-            .path = duped_path,
-        });
+        try dir_walker.addFileWithPath(file, path);
     }
 
-    std.mem.sort(FileTask, file_tasks.items, @as(SortContext, .{
+    std.mem.sort(DirWalker.FileTask, file_tasks.items, @as(SortContext, .{
         .sort = sort,
         .order = order,
     }), struct {
@@ -277,7 +224,7 @@ pub fn exec(allocator: std.mem.Allocator, args_iterator: *std.process.ArgIterato
             return a.? < b.?;
         }
 
-        pub fn lessThanFn(ctx: SortContext, a: FileTask, b: FileTask) bool {
+        pub fn lessThanFn(ctx: SortContext, a: DirWalker.FileTask, b: DirWalker.FileTask) bool {
             const is_less_than = switch (ctx.sort) {
                 // .created => nullLessThan(a.created_at_ms, b.created_at_ms),
                 // .modified => nullLessThan(a.modified_at_ms, b.modified_at_ms),
@@ -290,20 +237,7 @@ pub fn exec(allocator: std.mem.Allocator, args_iterator: *std.process.ArgIterato
         }
     }.lessThanFn);
 
-    each_task: for (file_tasks.items) |file_task| {
-        for (input_tags.items) |needle_tag| {
-            const has_tag = for (file_task.task.tags) |haystack_tag| {
-                if (std.mem.eql(u8, needle_tag, haystack_tag)) break true;
-            } else false;
-            if (!has_tag) continue :each_task;
-        }
-
-        if (input_query) |query| {
-            if (std.mem.indexOf(u8, file_task.task.name, query) == null) {
-                continue;
-            }
-        }
-
+    for (file_tasks.items) |file_task| {
         if (hide_details) {
             try stdout_writer.print("{s}\n", .{file_task.path});
         } else {

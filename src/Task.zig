@@ -83,6 +83,15 @@ pub fn initFromFile(allocator: std.mem.Allocator, file: std.fs.File) !Task {
     const file_data = try file.readToEndAlloc(allocator, std.math.maxInt(usize));
     defer allocator.free(file_data);
 
+    // return .{
+    //     .task = task,
+    //     .created_at_ms = created_at_ms,
+    //     .modified_at_ms = modified_at_ms,
+    // };
+    return try initFromFileData(allocator, file_data);
+}
+
+pub fn initFromFileData(allocator: std.mem.Allocator, file_data: []const u8) !Task {
     var parser: toml.Parser(toml.Table) = .init(allocator);
     defer parser.deinit();
 
@@ -92,11 +101,6 @@ pub fn initFromFile(allocator: std.mem.Allocator, file: std.fs.File) !Task {
     const task = try initFromTable(allocator, parsed.value);
     errdefer task.deinit(allocator);
 
-    // return .{
-    //     .task = task,
-    //     .created_at_ms = created_at_ms,
-    //     .modified_at_ms = modified_at_ms,
-    // };
     return task;
 }
 
