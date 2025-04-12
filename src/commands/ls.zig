@@ -18,7 +18,7 @@ const help_screen = "ono list [...paths] [-hrqtHso]\n\n" ++
         .{ "-q, --query <query>", "full-text search of all text-based fields in the tasks" },
         .{ "-t, --tag <tag>", "search for tasks with a particular tag" },
         .{ "-H, --hide-details", "whether to hide details of a task, only printing the file path" },
-        .{ "-s, --sort <\"name\">", "sort by name alphabetically" },
+        .{ "-s, --sort <\"name\"|\"assignment\"|\"priority\"|\"status\">", "sort by name or assignment alphabetically, priority or status" },
         .{ "-o, --order <\"ascending\"|\"descending\">", "use with --sort to determine whether the listing should be ascending or descending" },
     });
 
@@ -52,10 +52,16 @@ pub const Sort = enum {
     // created,
     // modified,
     name,
+    assignment,
+    priority,
+    status,
 
     pub fn fromShorthand(char: u8) ?Sort {
         return switch (char) {
             'n' => .name,
+            'a' => .assignment,
+            'p' => .priority,
+            's' => .status,
             else => null,
         };
     }
@@ -180,6 +186,9 @@ pub fn exec(allocator: std.mem.Allocator, args_iterator: *std.process.ArgIterato
         // .created => .descending,
         // .modified => .descending,
         .name => .ascending,
+        .assignment => .ascending,
+        .priority => .descending,
+        .status => .ascending,
     };
 
     var file_tasks: std.ArrayListUnmanaged(DirWalker.FileTask) = .empty;
@@ -213,15 +222,20 @@ pub fn exec(allocator: std.mem.Allocator, args_iterator: *std.process.ArgIterato
         try dir_walker.addFileWithPath(file, path);
     }
 
-    std.mem.sort(DirWalker.FileTask, file_tasks.items, @as(SortContext, .{
+    std.sort.heap(DirWalker.FileTask, file_tasks.items, @as(SortContext, .{
         .sort = sort,
         .order = order,
     }), struct {
         fn nullLessThan(a: anytype, b: anytype) bool {
+            if (@TypeOf(a) != @TypeOf(b)) @compileError("Cannot compare two values of differing types");
             if (a == null and b == null) return false;
             if (a == null and b != null) return true;
             if (a != null and b == null) return false;
-            return a.? < b.?;
+            if (@TypeOf(a.?, b.?) == []const u8) {
+                return std.mem.order(u8, a.?, b.?) == .lt;
+            } else {
+                return a.? < b.?;
+            }
         }
 
         pub fn lessThanFn(ctx: SortContext, a: DirWalker.FileTask, b: DirWalker.FileTask) bool {
@@ -229,6 +243,9 @@ pub fn exec(allocator: std.mem.Allocator, args_iterator: *std.process.ArgIterato
                 // .created => nullLessThan(a.created_at_ms, b.created_at_ms),
                 // .modified => nullLessThan(a.modified_at_ms, b.modified_at_ms),
                 .name => std.mem.order(u8, a.task.name, b.task.name) == .lt,
+                .assignment => nullLessThan(a.task.maybe_assigned_to, b.task.maybe_assigned_to),
+                .priority => @intFromEnum(a.task.priority) < @intFromEnum(b.task.priority),
+                .status => @intFromEnum(a.task.status) < @intFromEnum(b.task.status),
             };
             return switch (ctx.order) {
                 .ascending => is_less_than,

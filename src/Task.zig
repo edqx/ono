@@ -60,11 +60,25 @@ pub const Note = struct {
     }
 };
 
+pub const Priority = enum {
+    none,
+    low,
+    medium,
+    high,
+    critical,
+};
+
+pub const Status = enum {
+    none,
+    unresolved,
+    resolved,
+};
+
 name: []const u8,
 tags: [][]const u8,
 maybe_assigned_to: ?[]const u8,
-maybe_priority: ?[]const u8,
-maybe_status: ?[]const u8,
+priority: Priority,
+status: Status,
 
 notes: []Note,
 
@@ -119,12 +133,16 @@ pub fn initFromTable(allocator: std.mem.Allocator, table: toml.Table) !Task {
     errdefer if (out.maybe_assigned_to) |assigned_to| allocator.free(assigned_to);
 
     const priority_value = table.get("priority");
-    out.maybe_priority = if (priority_value) |value| try stringValue(allocator, value) orelse return Error.BadPriority else null;
-    errdefer if (out.maybe_priority) |priority| allocator.free(priority);
+    out.priority = if (priority_value) |value| priority: {
+        if (value != .string) return Error.BadPriority;
+        break :priority std.meta.stringToEnum(Priority, value.string) orelse return Error.BadPriority;
+    } else .none;
 
     const status_value = table.get("status");
-    out.maybe_status = if (status_value) |value| try stringValue(allocator, value) orelse return Error.BadStatus else null;
-    errdefer if (out.maybe_status) |status| allocator.free(status);
+    out.status = if (status_value) |value| priority: {
+        if (value != .string) return Error.BadPriority;
+        break :priority std.meta.stringToEnum(Status, value.string) orelse return Error.BadStatus;
+    } else .none;
 
     const notes_value = table.get("notes") orelse return Error.BadNotes;
     if (notes_value != .array) return Error.BadNotes;
@@ -147,8 +165,6 @@ pub fn initFromTable(allocator: std.mem.Allocator, table: toml.Table) !Task {
 pub fn deinit(self: Task, allocator: std.mem.Allocator) void {
     for (self.notes) |note| note.deinit(allocator);
     allocator.free(self.notes);
-    if (self.maybe_status) |status| allocator.free(status);
-    if (self.maybe_priority) |priority| allocator.free(priority);
     if (self.maybe_assigned_to) |assigned_to| allocator.free(assigned_to);
     for (self.tags) |tag| allocator.free(tag);
     allocator.free(self.tags);
