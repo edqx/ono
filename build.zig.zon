@@ -1,0 +1,16 @@
+.{
+    .name = .ono,
+    .version = "0.0.0",
+    .fingerprint = 0x9ab96fef58dd47e0,
+    .dependencies = .{
+        .toml = .{
+            .url = "git+https://github.com/sam701/zig-toml#451fc7fb5ad302d3d83aeda234a8d15e792ca585",
+            .hash = "toml-0.0.0-bV14BfdxAQDXkZ5wL6eVO9zBz622SAdz_pcWuQmTAsMg",
+        },
+    },
+    .paths = .{
+        "src/*",
+        "build.zig",
+        "build.zig.zon",
+    },
+}
