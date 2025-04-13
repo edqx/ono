@@ -6,7 +6,7 @@ const DirWalker = @import("../DirWalker.zig");
 
 const createHelpScreenSection = @import("../help_screen.zig").createHelpScreenSection;
 
-const help_screen = "ono list [...paths] [-hrqtHso]\n\n" ++
+const help_screen = "ono ls [...paths] [-hrqtHso]\n\n" ++
     "Parameters:\n" ++
     createHelpScreenSection(.{
         .{ "paths", "the folders and files to list tasks from, default is current working directory" },
