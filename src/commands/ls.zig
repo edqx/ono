@@ -206,6 +206,8 @@ pub fn exec(allocator: std.mem.Allocator, args_iterator: *std.process.ArgIterato
     for (input_paths.items) |path| {
         _ = std.fs.cwd().statFile(path) catch |e| switch (e) {
             error.IsDir => {
+                if (!input_recursive) continue;
+
                 var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
                 defer dir.close();
 
