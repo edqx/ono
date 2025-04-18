@@ -4,8 +4,8 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const toml_dependency = b.dependency("toml", .{});
-    const toml_module = toml_dependency.module("zig-toml");
+    const microwave_dependency = b.dependency("microwave", .{});
+    const microwave_module = microwave_dependency.module("microwave");
 
     const main_module = b.createModule(.{
         .root_source_file = b.path("./src/main.zig"),
@@ -14,7 +14,7 @@ pub fn build(b: *std.Build) !void {
         .link_libc = true,
     });
 
-    main_module.addImport("toml", toml_module);
+    main_module.addImport("microwave", microwave_module);
 
     const main_artifact = b.addExecutable(.{
         .name = "ono",

@@ -1,5 +1,5 @@
 const std = @import("std");
-const toml = @import("toml");
+const microwave = @import("microwave");
 
 const Task = @This();
 
@@ -9,12 +9,12 @@ fn freeSliceElements(allocator: std.mem.Allocator, list: anytype) void {
     for (list) |elem| allocator.free(elem);
 }
 
-fn stringValue(allocator: std.mem.Allocator, value: toml.Value) !?[]const u8 {
+fn stringValue(allocator: std.mem.Allocator, value: microwave.parse.Value) !?[]const u8 {
     if (value != .string or value.string.len == 0) return null;
     return try allocator.dupe(u8, value.string);
 }
 
-fn arrayOfStringsValue(allocator: std.mem.Allocator, value: toml.Value) !?[][]const u8 {
+fn arrayOfStringsValue(allocator: std.mem.Allocator, value: microwave.parse.Value) !?[][]const u8 {
     if (value != .array) return null;
     var list: std.ArrayListUnmanaged([]const u8) = try .initCapacity(allocator, value.array.items.len);
     defer list.deinit(allocator);
@@ -33,7 +33,7 @@ pub const Note = struct {
     maybe_note: ?[]const u8,
     attachments: [][]const u8,
 
-    pub fn initFromTable(allocator: std.mem.Allocator, table: toml.Table) !Note {
+    pub fn initFromTable(allocator: std.mem.Allocator, table: microwave.parse.Value.Table) !Note {
         var out: Note = undefined;
 
         const attributed_to_value = table.get("attributed_to");
@@ -44,12 +44,28 @@ pub const Note = struct {
         out.maybe_note = if (note_value) |value| try stringValue(allocator, value) orelse return Error.BadNotes else null;
         errdefer if (out.maybe_attributed_to) |attributed_to| allocator.free(attributed_to);
 
-        const attachments_value = table.get("tags");
+        const attachments_value = table.get("attachments");
         out.attachments = if (attachments_value) |value| try arrayOfStringsValue(allocator, value) orelse return Error.BadAttachments else &.{};
         errdefer allocator.free(out.attachments);
         errdefer freeSliceElements(allocator, out.attachments);
 
         return out;
+    }
+
+    pub fn toTableAlloc(self: Note, arena: std.mem.Allocator) !microwave.parse.Value.Table {
+        var table: microwave.parse.Value.Table = .empty;
+        errdefer microwave.parse.deinitTable(arena, &table);
+
+        if (self.maybe_attributed_to) |attributed_to| try table.put(arena, "attributed_to", .{ .string = try arena.dupe(u8, attributed_to) });
+        if (self.maybe_note) |note| try table.put(arena, "note", .{ .string = try arena.dupe(u8, note) });
+
+        if (self.attachments.len > 0) {
+            var attachments: microwave.parse.Value.Array = try .initCapacity(arena, self.attachments.len);
+            for (self.attachments) |attachment| attachments.appendAssumeCapacity(.{ .string = try arena.dupe(u8, attachment) });
+            try table.put(arena, "attachments", .{ .array = attachments });
+        }
+
+        return table;
     }
 
     pub fn deinit(self: Note, allocator: std.mem.Allocator) void {
@@ -106,19 +122,16 @@ pub fn initFromFile(allocator: std.mem.Allocator, file: std.fs.File) !Task {
 }
 
 pub fn initFromFileData(allocator: std.mem.Allocator, file_data: []const u8) !Task {
-    var parser: toml.Parser(toml.Table) = .init(allocator);
-    defer parser.deinit();
+    const document = try microwave.parse.fromSlice(allocator, file_data);
+    defer document.deinit();
 
-    const parsed = try parser.parseString(file_data);
-    defer parsed.deinit();
-
-    const task = try initFromTable(allocator, parsed.value);
+    const task = try initFromTable(allocator, document.root_table);
     errdefer task.deinit(allocator);
 
     return task;
 }
 
-pub fn initFromTable(allocator: std.mem.Allocator, table: toml.Table) !Task {
+pub fn initFromTable(allocator: std.mem.Allocator, table: microwave.parse.Value.Table) !Task {
     var out: Task = undefined;
 
     out.name = try stringValue(allocator, table.get("name") orelse return Error.BadName) orelse return Error.BadName;
@@ -145,13 +158,12 @@ pub fn initFromTable(allocator: std.mem.Allocator, table: toml.Table) !Task {
     } else .none;
 
     const notes_value = table.get("notes") orelse return Error.BadNotes;
-    if (notes_value != .array) return Error.BadNotes;
-    var notes_list: std.ArrayListUnmanaged(Note) = try .initCapacity(allocator, notes_value.array.items.len);
+    if (notes_value != .array_of_tables) return Error.BadNotes;
+    var notes_list: std.ArrayListUnmanaged(Note) = try .initCapacity(allocator, notes_value.array_of_tables.items.len);
     defer notes_list.deinit(allocator);
     defer for (notes_list.items) |note| note.deinit(allocator);
-    for (notes_value.array.items) |note_value| {
-        if (note_value != .table) return Error.BadNotes;
-        const note: Note = try .initFromTable(allocator, note_value.table.*);
+    for (notes_value.array_of_tables.items) |note_value| {
+        const note: Note = try .initFromTable(allocator, note_value);
         errdefer note.deinit(allocator);
         notes_list.appendAssumeCapacity(note);
     }
@@ -160,6 +172,29 @@ pub fn initFromTable(allocator: std.mem.Allocator, table: toml.Table) !Task {
     errdefer for (out.notes) |note| note.deinit(allocator);
 
     return out;
+}
+
+pub fn toTableAlloc(self: Task, arena: std.mem.Allocator) !microwave.parse.Value.Table {
+    var table: microwave.parse.Value.Table = .empty;
+    errdefer microwave.parse.deinitTable(arena, &table);
+
+    try table.put(arena, "name", .{ .string = try arena.dupe(u8, self.name) });
+    var tags: microwave.parse.Value.Array = try .initCapacity(arena, self.tags.len);
+    for (self.tags) |tag| tags.appendAssumeCapacity(.{ .string = try arena.dupe(u8, tag) });
+    try table.put(arena, "tags", .{ .array = tags });
+
+    if (self.maybe_assigned_to) |assigned_to| try table.put(arena, "assigned_to", .{ .string = try arena.dupe(u8, assigned_to) });
+    if (self.priority != .none) try table.put(arena, "priority", .{ .string = @tagName(self.priority) });
+    if (self.status != .none) try table.put(arena, "status", .{ .string = @tagName(self.status) });
+
+    var notes: microwave.parse.Value.ArrayOfTables = try .initCapacity(arena, self.notes.len);
+    for (self.notes) |note| {
+        const note_table = try note.toTableAlloc(arena);
+        notes.appendAssumeCapacity(note_table);
+    }
+    try table.put(arena, "notes", .{ .array_of_tables = notes });
+
+    return table;
 }
 
 pub fn deinit(self: Task, allocator: std.mem.Allocator) void {
