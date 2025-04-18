@@ -9,7 +9,7 @@ const help_screen = "ono <sub-command> [...options]\n\n" ++
         .{ "ls", "list and search tasks" },
         .{ "init", "create a new task interactively" },
         .{ "resolve", "mark a task as resolved" },
-        .{ "tag", "add tags to a task" },
+        .{ "tag", "modify the tags of a task" },
         .{ "comment", "add a comment note to a task" },
         .{ "check", "validate tasks" },
         .{ "serve", "start a web server to view tasks, and rest api for managing them" },
@@ -31,6 +31,7 @@ pub const Flag = enum {
 
 pub const commands = struct {
     pub const ls = @import("commands/ls.zig");
+    pub const tag = @import("commands/tag.zig");
 };
 
 const use_gpa = switch (builtin.mode) {
@@ -96,9 +97,6 @@ pub fn main() !void {
         try stdout_writer.print("{s}\n", .{help_screen});
         return;
     }
-
-    const arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
 
     const sub_command = input_sub_command orelse {
         try stdout_writer.print("{s}\n", .{help_screen});
