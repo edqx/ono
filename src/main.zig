@@ -8,7 +8,7 @@ const help_screen = "ono <sub-command> [...options]\n\n" ++
     createHelpScreenSection(.{
         .{ "ls", "list and search tasks" },
         .{ "init", "create a new task interactively" },
-        .{ "resolve", "mark a task as resolved" },
+        .{ "resolve", "update the status of a task" },
         .{ "tag", "modify the tags of a task" },
         .{ "comment", "add a comment note to a task" },
         .{ "check", "validate tasks" },
@@ -32,6 +32,7 @@ pub const Flag = enum {
 pub const commands = struct {
     pub const ls = @import("commands/ls.zig");
     pub const tag = @import("commands/tag.zig");
+    pub const resolve = @import("commands/resolve.zig");
 };
 
 const use_gpa = switch (builtin.mode) {
@@ -51,7 +52,7 @@ pub fn main() !void {
     defer args_iterator.deinit();
 
     const executable = args_iterator.next() orelse {
-        try stdout_writer.print("{s}\n", .{help_screen});
+        try stderr_writer.print("{s}\n", .{help_screen});
         return error.UnknownSubCommand;
     };
     _ = executable;
@@ -99,7 +100,7 @@ pub fn main() !void {
     }
 
     const sub_command = input_sub_command orelse {
-        try stdout_writer.print("{s}\n", .{help_screen});
+        try stderr_writer.print("{s}\n", .{help_screen});
         return error.UnknownSubCommand;
     };
 

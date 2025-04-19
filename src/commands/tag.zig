@@ -133,7 +133,7 @@ pub fn exec(allocator: std.mem.Allocator, args_iterator: *std.process.ArgIterato
     const overwrite: ?[]const []const u8 = if (input_clear) &.{} else if (input_overwrite.count() > 0) input_overwrite.keys() else null;
 
     if (input_paths.items.len == 0) {
-        try stdout_writer.print("{s}\n", .{help_screen});
+        try stderr_writer.print("{s}\n", .{help_screen});
         return Error.NoTasksToTag;
     }
 
@@ -209,7 +209,5 @@ pub fn exec(allocator: std.mem.Allocator, args_iterator: *std.process.ArgIterato
         try file.setEndPos(0);
 
         try microwave.stringify.writeTable(arena.allocator(), table, file.writer());
-        // var writer = file.writer().any();
-        // try toml.serialize(arena.allocator(), table, &writer);
     }
 }
