@@ -8,8 +8,8 @@
         //     .hash = "toml-0.0.0-bV14BfdxAQDXkZ5wL6eVO9zBz622SAdz_pcWuQmTAsMg",
         // },
         .microwave = .{
-            .url = "git+https://github.com/edqx/microwave.git#0a7222d642672537209a06560f082895b2474628",
-            .hash = "microwave-1.0.0-e4c5Gdd0AQClu_UJUp8n-3dY1Hh_SY2wyeBCMQ0HrtrW",
+            .url = "git+https://github.com/edqx/microwave.git#a6151b17a09c9d6747d727aae33a7c43b51d3160",
+            .hash = "microwave-1.0.0-e4c5GTGvAQBgRkXDd9Ayl6bI9trusFYBjrXobBULj-JC",
         },
     },
     .paths = .{

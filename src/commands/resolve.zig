@@ -97,6 +97,8 @@ pub fn exec(allocator: std.mem.Allocator, args_iterator: *std.process.ArgIterato
         const file = try std.fs.cwd().openFile(path, .{ .mode = .read_write });
         defer file.close();
 
+        var buffered_writer = std.io.bufferedWriter(file.writer());
+
         var task = try Task.initFromFile(allocator, file);
         defer task.deinit(allocator);
 
@@ -105,11 +107,10 @@ pub fn exec(allocator: std.mem.Allocator, args_iterator: *std.process.ArgIterato
         var arena: std.heap.ArenaAllocator = .init(allocator);
         defer arena.deinit();
 
-        const table = try task.toTableAlloc(arena.allocator());
-
         try file.seekTo(0);
         try file.setEndPos(0);
 
-        try microwave.stringify.writeTable(arena.allocator(), table, file.writer());
+        try task.write(allocator, buffered_writer.writer());
+        try buffered_writer.flush();
     }
 }

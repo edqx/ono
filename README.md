@@ -4,7 +4,7 @@ management tool. Use files to create tasks, folders to organise them, and your f
 source version manager to sync them with your team.
 
 Since Ono tasks are just files on your filesystem, you can embed them in projects
-seemlessly, and easily integrate them with any system.
+seamlessly, and easily integrate them with any system.
 
 ## Tasks
 To create a new task, create a `.ono` file in your project folder. The `.ono` file

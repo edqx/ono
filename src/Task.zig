@@ -52,6 +52,13 @@ pub const Note = struct {
         return out;
     }
 
+    pub fn deinit(self: Note, allocator: std.mem.Allocator) void {
+        for (self.attachments) |attachment| allocator.free(attachment);
+        allocator.free(self.attachments);
+        if (self.maybe_note) |note| allocator.free(note);
+        if (self.maybe_attributed_to) |attributed_to| allocator.free(attributed_to);
+    }
+
     pub fn toTableAlloc(self: Note, arena: std.mem.Allocator) !microwave.parse.Value.Table {
         var table: microwave.parse.Value.Table = .empty;
         errdefer microwave.parse.deinitTable(arena, &table);
@@ -68,11 +75,25 @@ pub const Note = struct {
         return table;
     }
 
-    pub fn deinit(self: Note, allocator: std.mem.Allocator) void {
-        for (self.attachments) |attachment| allocator.free(attachment);
-        allocator.free(self.attachments);
-        if (self.maybe_note) |note| allocator.free(note);
-        if (self.maybe_attributed_to) |attributed_to| allocator.free(attributed_to);
+    pub fn write(self: Note, write_stream: anytype) !void {
+        if (self.maybe_attributed_to) |attributed_to| {
+            try write_stream.beginKeyPair("attributed_to");
+            try write_stream.writeString(attributed_to);
+        }
+
+        if (self.maybe_note) |note| {
+            try write_stream.beginKeyPair("note");
+            try write_stream.writeMultilineString(note);
+        }
+
+        if (self.attachments.len > 0) {
+            try write_stream.beginKeyPair("attachments");
+            try write_stream.beginArray();
+            {
+                for (self.attachments) |attachment| try write_stream.writeString(attachment);
+            }
+            try write_stream.endArray();
+        }
     }
 };
 
@@ -174,6 +195,15 @@ pub fn initFromTable(allocator: std.mem.Allocator, table: microwave.parse.Value.
     return out;
 }
 
+pub fn deinit(self: Task, allocator: std.mem.Allocator) void {
+    for (self.notes) |note| note.deinit(allocator);
+    allocator.free(self.notes);
+    if (self.maybe_assigned_to) |assigned_to| allocator.free(assigned_to);
+    for (self.tags) |tag| allocator.free(tag);
+    allocator.free(self.tags);
+    allocator.free(self.name);
+}
+
 pub fn toTableAlloc(self: Task, arena: std.mem.Allocator) !microwave.parse.Value.Table {
     var table: microwave.parse.Value.Table = .empty;
     errdefer microwave.parse.deinitTable(arena, &table);
@@ -197,11 +227,42 @@ pub fn toTableAlloc(self: Task, arena: std.mem.Allocator) !microwave.parse.Value
     return table;
 }
 
-pub fn deinit(self: Task, allocator: std.mem.Allocator) void {
-    for (self.notes) |note| note.deinit(allocator);
-    allocator.free(self.notes);
-    if (self.maybe_assigned_to) |assigned_to| allocator.free(assigned_to);
-    for (self.tags) |tag| allocator.free(tag);
-    allocator.free(self.tags);
-    allocator.free(self.name);
+pub fn write(self: Task, allocator: std.mem.Allocator, writer: anytype) !void {
+    var write_stream: microwave.write_stream.Stream(@TypeOf(writer), .{}) = .{
+        .underlying_writer = writer,
+        .allocator = allocator,
+    };
+    defer write_stream.deinit();
+
+    try write_stream.beginKeyPair("name");
+    try write_stream.writeString(self.name);
+
+    try write_stream.beginKeyPair("tags");
+    try write_stream.beginArray();
+    {
+        for (self.tags) |tag| try write_stream.writeString(tag);
+    }
+    try write_stream.endArray();
+
+    try writer.print("\n", .{});
+
+    if (self.maybe_assigned_to) |assigned_to| {
+        try write_stream.beginKeyPair("assigned_to");
+        try write_stream.writeString(assigned_to);
+    }
+
+    if (self.priority != .none) {
+        try write_stream.beginKeyPair("priority");
+        try write_stream.writeString(@tagName(self.priority));
+    }
+
+    if (self.status != .none) {
+        try write_stream.beginKeyPair("status");
+        try write_stream.writeString(@tagName(self.status));
+    }
+
+    for (self.notes) |note| {
+        try write_stream.writeManyTable("notes");
+        try note.write(&write_stream);
+    }
 }
