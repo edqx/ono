@@ -15,17 +15,14 @@ pub const FileTask = struct {
 };
 
 pub const Filter = struct {
-    maybe_query: ?[]const u8,
-    tags: []const []const u8,
+    maybe_query: ?[]const u8 = null,
+    tags: []const []const u8 = &.{},
 };
 
 allocator: std.mem.Allocator,
 collector: *std.ArrayListUnmanaged(FileTask),
 name_buffer: std.ArrayListUnmanaged(u8) = .empty,
-filter: Filter = .{
-    .maybe_query = null,
-    .tags = &.{},
-},
+filter: Filter = .{},
 
 pub fn init(allocator: std.mem.Allocator, collector: *std.ArrayListUnmanaged(FileTask)) DirWalker {
     return .{

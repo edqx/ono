@@ -1,4 +1,5 @@
 const std = @import("std");
+const zmpl = @import("zmpl");
 const builtin = @import("builtin");
 
 const createHelpScreenSection = @import("./help_screen.zig").createHelpScreenSection;
@@ -33,6 +34,8 @@ pub const commands = struct {
     pub const ls = @import("commands/ls.zig");
     pub const tag = @import("commands/tag.zig");
     pub const resolve = @import("commands/resolve.zig");
+
+    pub const serve = @import("commands/serve.zig");
 };
 
 const use_gpa = switch (builtin.mode) {

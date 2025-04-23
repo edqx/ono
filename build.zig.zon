@@ -11,6 +11,17 @@
             .url = "git+https://github.com/edqx/microwave.git#a6151b17a09c9d6747d727aae33a7c43b51d3160",
             .hash = "microwave-1.0.0-e4c5GTGvAQBgRkXDd9Ayl6bI9trusFYBjrXobBULj-JC",
         },
+        .zmpl = .{
+            .url = "git+https://github.com/jetzig-framework/zmpl#cfbbc1263c4c62fa91579280c08c5a935c579563",
+            .hash = "zmpl-0.0.1-SYFGBmJsAwCUsj-noN2QEWHY1paouyj0naGNQ2uTIcYw",
+        },
+        // .httpz = .{
+        //     .url = "git+https://github.com/karlseguin/http.zig#0ff1094c1ab01a0248fd01e5a09753895830569c",
+        //     .hash = "httpz-0.0.0-PNVzrAy3BgBz6c_AJaU-xNYvmiyv-Nk25qZC1Gnbr8UI",
+        // },
+        .httpz = .{
+            .path = "../edqx_http.zig",
+        },
     },
     .paths = .{
         "src/*",
