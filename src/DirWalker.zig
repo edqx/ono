@@ -17,6 +17,8 @@ pub const FileTask = struct {
 pub const Filter = struct {
     maybe_query: ?[]const u8 = null,
     tags: []const []const u8 = &.{},
+    filter_assignment: bool = false,
+    maybe_assigned_to: ?[]const u8 = null,
 };
 
 allocator: std.mem.Allocator,
@@ -35,6 +37,27 @@ pub fn deinit(self: *DirWalker, allocator: std.mem.Allocator) void {
     self.name_buffer.deinit(allocator);
 }
 
+pub fn passesFilter(task: Task, filter: Filter) bool {
+    if (filter.maybe_query) |query| {
+        if (!std.mem.containsAtLeast(u8, task.name, 1, query)) return false;
+    }
+    if (filter.filter_assignment) {
+        if (filter.maybe_assigned_to) |assigned_to| {
+            const task_assigned_to = task.maybe_assigned_to orelse return false;
+            if (!std.mem.eql(u8, task_assigned_to, assigned_to)) return false;
+        } else {
+            if (task.maybe_assigned_to != null) return false;
+        }
+    }
+    for (filter.tags) |tag| {
+        const has_tag = for (task.tags) |task_tag| {
+            if (std.mem.eql(u8, tag, task_tag)) break true;
+        } else false;
+        if (!has_tag) return false;
+    }
+    return true;
+}
+
 pub fn addFileWithPath(self: *DirWalker, file: std.fs.File, whole_path: []const u8) !void {
     const formatted_path = try self.allocator.dupe(u8, whole_path);
     errdefer self.allocator.free(formatted_path);
@@ -42,18 +65,7 @@ pub fn addFileWithPath(self: *DirWalker, file: std.fs.File, whole_path: []const 
     const task = try Task.initFromFile(self.allocator, file);
     errdefer task.deinit(self.allocator);
 
-    const passes_filter = filter_check: {
-        if (self.filter.maybe_query) |query| {
-            if (!std.mem.containsAtLeast(u8, task.name, 1, query)) break :filter_check false;
-        }
-        for (self.filter.tags) |tag| {
-            const has_tag = for (task.tags) |task_tag| {
-                if (std.mem.eql(u8, tag, task_tag)) break true;
-            } else false;
-            if (!has_tag) break :filter_check false;
-        }
-        break :filter_check true;
-    };
+    const passes_filter = passesFilter(task, self.filter);
     if (!passes_filter) {
         task.deinit(self.allocator);
         self.allocator.free(formatted_path);

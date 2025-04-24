@@ -1,3 +1,90 @@
-.tasks_table td {
+body {
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+.body_container {
+    width: 96rem;
+    display: flex;
+    flex-direction: column;
+}
+
+.tasks_table {
+    border-collapse: collapse;
+}
+
+.tasks_table td,
+.tasks_table th {
     padding: 0.5rem 2rem;
+    border: 1px solid #222222;
+}
+
+.tasks_table tr {
+    background-color: #eeeeee;
+}
+
+.tasks_table thead tr {
+    background-color: #bbbbbb;
+}
+
+.header {
+    padding: 1rem 2rem;
+    display: flex;
+    align-items: center;
+    background-color: skyblue;
+}
+
+.header .header-created_at {
+    order: 2;
+    margin-left: auto;
+}
+
+.task_header {
+    display: flex;
+    flex-direction: column;
+}
+
+.task_header-name {}
+
+.task_header-num_notes {
+    color: #777777;
+    font-size: 0.6rem;
+}
+
+.tags-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.tag {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.tag-quick_actions {
+    font-size: 0.6rem;
+    display: flex;
+    align-items: center;
+    justify-items: center;
+}
+
+.priority_critical {
+    background-color: crimson;
+}
+
+.priority_high {
+    background-color: orangered;
+}
+
+.priority_medium {
+    background-color: orange;
+}
+
+.priority_low {
+    background-color: skyblue;
+}
+
+.priority_none {
+    background-color: lightgrey;
 }

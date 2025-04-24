@@ -1,4 +1,5 @@
 const std = @import("std");
+const datetime = @import("datetime").datetime;
 const zmpl = @import("zmpl");
 const httpz = @import("httpz");
 
@@ -165,7 +166,68 @@ pub fn exec(allocator: std.mem.Allocator, args_iterator: *std.process.ArgIterato
     thread.join();
 }
 
+fn createTaskObject(data: *zmpl.Data, file_task: DirWalker.FileTask) !*zmpl.Data.Value {
+    const obj = try data.object();
+
+    try obj.put("id", data.string(file_task.path));
+    try obj.put("name", data.string(file_task.task.name));
+
+    const tags = try data.array();
+    for (file_task.task.tags) |tag| {
+        try tags.append(data.string(tag));
+    }
+
+    try obj.put("tags", tags);
+
+    try obj.put("priority", data.string(@tagName(file_task.task.priority)));
+    try obj.put("assigned_to", if (file_task.task.maybe_assigned_to) |assigned_to| data.string(assigned_to) else data.string(""));
+    try obj.put("due_by", data.string("n/a"));
+
+    const notes = try data.array();
+    for (file_task.task.notes) |note| {
+        const note_obj = try data.object();
+
+        try obj.put("attributed_to", if (note.maybe_attributed_to) |attributed_to| data.string(attributed_to) else data.string(""));
+        try obj.put("note", if (note.maybe_note) |note_contents| data.string(note_contents) else data.string(""));
+
+        const attachments = try data.array();
+        for (note.attachments) |attachment_path| {
+            try attachments.append(data.string(attachment_path));
+        }
+
+        try note_obj.put("attachments", attachments);
+
+        try notes.append(note_obj);
+    }
+
+    try obj.put("notes", notes);
+    try obj.put("num_notes", notes.count());
+
+    return obj;
+}
+
+fn createCachedAtString(arena: std.mem.Allocator, data: *zmpl.Data, created_at_timestamp: i64) !*zmpl.Data.Value {
+    const utc_datetime = datetime.Datetime.fromTimestamp(created_at_timestamp);
+
+    return data.string(try utc_datetime.formatHttp(arena));
+}
+
 fn getHomePage(handler: Handler, req: *httpz.Request, res: *httpz.Response) !void {
+    const query_parameters = try req.query();
+    const filter_tags_string = query_parameters.get("filter_tags") orelse "";
+    const filter_assignment = query_parameters.get("filter_assignment") != null;
+    const assigned_to_string = query_parameters.get("assigned_to");
+
+    var request_filter_tags: std.ArrayListUnmanaged([]const u8) = try .initCapacity(req.arena, std.mem.count(u8, filter_tags_string, ",") + 1);
+    var tokenize_tags = std.mem.tokenizeAny(u8, filter_tags_string, ",");
+    while (tokenize_tags.next()) |tag| request_filter_tags.appendAssumeCapacity(tag);
+
+    const layout_template = zmpl.find("layouts/main") orelse {
+        res.status = 500;
+        res.body = "Internal server error";
+        return;
+    };
+
     const page_template = zmpl.find("home") orelse {
         res.status = 500;
         res.body = "Internal server error";
@@ -177,32 +239,31 @@ fn getHomePage(handler: Handler, req: *httpz.Request, res: *httpz.Response) !voi
     var data: zmpl.Data = .init(req.arena);
 
     const body = try data.object();
+    try body.put("cached_at_timestamp", try createCachedAtString(req.arena, &data, handler.cached_at_timestamp));
+
+    const filter_tags = try data.array();
+    for (request_filter_tags.items) |filter_tag| {
+        try filter_tags.append(data.string(filter_tag));
+    }
+
+    try body.put("filter_tags", filter_tags);
 
     const tasks = try data.array();
 
     for (handler.files) |file_task| {
-        const obj = try data.object();
-
-        try obj.put("id", data.string(file_task.path));
-        try obj.put("name", data.string(file_task.task.name));
-
-        const tags = try data.array();
-        for (file_task.task.tags) |tag| {
-            try tags.append(data.string(tag));
-        }
-
-        try obj.put("tags", tags);
-
-        try obj.put("priority", data.string(@tagName(file_task.task.priority)));
-        try obj.put("assigned_to", if (file_task.task.maybe_assigned_to) |assigned_to| data.string(assigned_to) else data.string(""));
-        try obj.put("due_by", data.string("n/a"));
-
-        try tasks.append(obj);
+        if (!DirWalker.passesFilter(file_task.task, .{
+            .tags = request_filter_tags.items,
+            .filter_assignment = filter_assignment,
+            .maybe_assigned_to = assigned_to_string,
+        })) continue;
+        try tasks.append(try createTaskObject(&data, file_task));
     }
 
     try body.put("tasks", tasks);
 
-    const output = try page_template.render(&data, void, {}, .{});
+    const output = try page_template.render(&data, void, {}, .{
+        .layout = layout_template,
+    });
     res.body = output;
 }
 
@@ -215,10 +276,16 @@ fn getTaskShow(handler: Handler, req: *httpz.Request, res: *httpz.Response) !voi
     };
 
     const file_task = for (handler.files) |file_task| {
-        if (std.mem.eql(u8, file_task.path, id)) break file_task.task;
+        if (std.mem.eql(u8, file_task.path, id)) break file_task;
     } else {
         res.status = 404;
         res.body = "Unknown task";
+        return;
+    };
+
+    const layout_template = zmpl.find("layouts/main") orelse {
+        res.status = 500;
+        res.body = "Internal server error";
         return;
     };
 
@@ -233,9 +300,12 @@ fn getTaskShow(handler: Handler, req: *httpz.Request, res: *httpz.Response) !voi
     var data: zmpl.Data = .init(req.arena);
 
     const body = try data.object();
-    try body.put("name", data.string(file_task.name));
+    try body.put("cached_at_timestamp", try createCachedAtString(req.arena, &data, handler.cached_at_timestamp));
+    try body.put("task", try createTaskObject(&data, file_task));
 
-    const output = try page_template.render(&data, void, {}, .{});
+    const output = try page_template.render(&data, void, {}, .{
+        .layout = layout_template,
+    });
     res.body = output;
 }
 

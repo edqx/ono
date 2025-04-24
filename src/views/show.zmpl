@@ -1,9 +1,2 @@
-<!DOCTYPE html>
-<head>
-    <html>
 
-    </html>
-    <body>
-        <span>{{ $.name }}</span>
-    </body>
-</head>
+<span>{{ $.task.name }}</span>

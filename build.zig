@@ -6,6 +6,7 @@ pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
 
     const microwave_dependency = b.dependency("microwave", .{});
+    const datetime_dependency = b.dependency("datetime", .{});
     const httpz_dependency = b.dependency("httpz", .{});
     const zmpl_dependency = b.dependency("zmpl", .{
         .zmpl_templates_paths = try zmpl.templatesPaths(b.allocator, &.{
@@ -17,6 +18,7 @@ pub fn build(b: *std.Build) !void {
     });
 
     const microwave_module = microwave_dependency.module("microwave");
+    const datetime_module = datetime_dependency.module("datetime");
     const httpz_module = httpz_dependency.module("httpz");
     const zmpl_module = zmpl_dependency.module("zmpl");
 
@@ -28,6 +30,7 @@ pub fn build(b: *std.Build) !void {
     });
 
     main_module.addImport("microwave", microwave_module);
+    main_module.addImport("datetime", datetime_module);
     main_module.addImport("httpz", httpz_module);
     main_module.addImport("zmpl", zmpl_module);
 
