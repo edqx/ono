@@ -42,6 +42,8 @@ pub const Flag = enum {
 pub const Handler = struct {
     cached_at_timestamp: i64,
     files: []DirWalker.FileTask,
+    all_tags: std.StringArrayHashMapUnmanaged(void),
+    all_assignments: std.StringArrayHashMapUnmanaged(void),
 };
 
 pub fn exec(allocator: std.mem.Allocator, args_iterator: *std.process.ArgIterator, stdout_writer: anytype, stderr_writer: anytype) !void {
@@ -136,6 +138,17 @@ pub fn exec(allocator: std.mem.Allocator, args_iterator: *std.process.ArgIterato
         try dir_walker.addFileWithPath(file, path);
     }
 
+    var all_tags: std.StringArrayHashMapUnmanaged(void) = .empty;
+    defer all_tags.deinit(allocator);
+
+    var all_assignments: std.StringArrayHashMapUnmanaged(void) = .empty;
+    defer all_assignments.deinit(allocator);
+
+    for (dir_walker.collector.*.items) |file_task| {
+        for (file_task.task.tags) |tag| try all_tags.put(allocator, tag, {});
+        if (file_task.task.maybe_assigned_to) |assigned_to| try all_assignments.put(allocator, assigned_to, {});
+    }
+
     const cached_at_timestamp = std.time.milliTimestamp();
 
     var server: httpz.Server(Handler) = try .init(allocator, .{
@@ -144,6 +157,8 @@ pub fn exec(allocator: std.mem.Allocator, args_iterator: *std.process.ArgIterato
     }, .{
         .cached_at_timestamp = cached_at_timestamp,
         .files = dir_walker.collector.items,
+        .all_tags = all_tags,
+        .all_assignments = all_assignments,
     });
     defer {
         server.stop();
@@ -214,9 +229,10 @@ fn createCachedAtString(arena: std.mem.Allocator, data: *zmpl.Data, created_at_t
 
 fn getHomePage(handler: Handler, req: *httpz.Request, res: *httpz.Response) !void {
     const query_parameters = try req.query();
+    const filter_query = query_parameters.get("filter_query") orelse "";
     const filter_tags_string = query_parameters.get("filter_tags") orelse "";
     const filter_assignment = query_parameters.get("filter_assignment") != null;
-    const assigned_to_string = query_parameters.get("assigned_to");
+    const filter_assigned_to_string = query_parameters.get("filter_assigned_to");
 
     var request_filter_tags: std.ArrayListUnmanaged([]const u8) = try .initCapacity(req.arena, std.mem.count(u8, filter_tags_string, ",") + 1);
     var tokenize_tags = std.mem.tokenizeAny(u8, filter_tags_string, ",");
@@ -241,6 +257,8 @@ fn getHomePage(handler: Handler, req: *httpz.Request, res: *httpz.Response) !voi
     const body = try data.object();
     try body.put("cached_at_timestamp", try createCachedAtString(req.arena, &data, handler.cached_at_timestamp));
 
+    try body.put("filter_query", data.string(filter_query));
+
     const filter_tags = try data.array();
     for (request_filter_tags.items) |filter_tag| {
         try filter_tags.append(data.string(filter_tag));
@@ -248,13 +266,36 @@ fn getHomePage(handler: Handler, req: *httpz.Request, res: *httpz.Response) !voi
 
     try body.put("filter_tags", filter_tags);
 
+    try body.put("filter_assignment", data.boolean(filter_assignment));
+    try body.put("filter_has_assigned_to", data.boolean(filter_assigned_to_string != null));
+    if (filter_assigned_to_string) |assigned_to| {
+        try body.put("filter_assigned_to", data.string(assigned_to));
+    }
+
+    const all_tags = try data.array();
+    var all_tags_iterator = handler.all_tags.iterator();
+    while (all_tags_iterator.next()) |tag| {
+        try all_tags.append(data.string(tag.key_ptr.*));
+    }
+
+    try body.put("all_tags", all_tags);
+
+    const all_assignments = try data.array();
+    var all_assignments_iterator = handler.all_assignments.iterator();
+    while (all_assignments_iterator.next()) |tag| {
+        try all_assignments.append(data.string(tag.key_ptr.*));
+    }
+
+    try body.put("all_assignments", all_assignments);
+
     const tasks = try data.array();
 
     for (handler.files) |file_task| {
         if (!DirWalker.passesFilter(file_task.task, .{
+            .maybe_query = if (filter_query.len > 0) filter_query else null,
             .tags = request_filter_tags.items,
             .filter_assignment = filter_assignment,
-            .maybe_assigned_to = assigned_to_string,
+            .maybe_assigned_to = filter_assigned_to_string,
         })) continue;
         try tasks.append(try createTaskObject(&data, file_task));
     }

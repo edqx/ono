@@ -8,6 +8,36 @@ body {
     flex-direction: column;
 }
 
+.filter {
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    background-color: bisque;
+}
+
+.filter-sections {
+    display: flex;
+    gap: 4rem;
+}
+
+.filter-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.filter-action_left {
+    align-self: flex-start;
+}
+
+.filter-action_right {
+    align-self: flex-end;
+}
+
+.filter-query {
+    width: 24rem;
+}
+
 .tasks_table {
     border-collapse: collapse;
 }
@@ -50,7 +80,7 @@ body {
     font-size: 0.6rem;
 }
 
-.tags-list {
+.tags_list {
     display: flex;
     flex-wrap: wrap;
     gap: 1rem;
