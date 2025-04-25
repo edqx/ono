@@ -85,6 +85,37 @@ pub const SortContext = struct {
     order: Order,
 };
 
+pub fn sortWithContext(items: []DirWalker.FileTask, context: SortContext) void {
+    std.sort.heap(DirWalker.FileTask, items, @as(SortContext, context), struct {
+        fn nullLessThan(a: anytype, b: anytype) bool {
+            if (@TypeOf(a) != @TypeOf(b)) @compileError("Cannot compare two values of differing types");
+            if (a == null and b == null) return false;
+            if (a == null and b != null) return true;
+            if (a != null and b == null) return false;
+            if (@TypeOf(a.?, b.?) == []const u8) {
+                return std.mem.order(u8, a.?, b.?) == .lt;
+            } else {
+                return a.? < b.?;
+            }
+        }
+
+        pub fn lessThanFn(ctx: SortContext, a: DirWalker.FileTask, b: DirWalker.FileTask) bool {
+            const is_less_than = switch (ctx.sort) {
+                // .created => nullLessThan(a.created_at_ms, b.created_at_ms),
+                // .modified => nullLessThan(a.modified_at_ms, b.modified_at_ms),
+                .name => std.mem.order(u8, a.task.name, b.task.name) == .lt,
+                .assignment => nullLessThan(a.task.maybe_assigned_to, b.task.maybe_assigned_to),
+                .priority => @intFromEnum(a.task.priority) < @intFromEnum(b.task.priority),
+                .status => @intFromEnum(a.task.status) < @intFromEnum(b.task.status),
+            };
+            return switch (ctx.order) {
+                .ascending => is_less_than,
+                .descending => !is_less_than,
+            };
+        }
+    }.lessThanFn);
+}
+
 pub fn exec(allocator: std.mem.Allocator, args_iterator: *std.process.ArgIterator, stdout_writer: anytype, stderr_writer: anytype) !void {
     _ = stderr_writer;
 
@@ -224,37 +255,10 @@ pub fn exec(allocator: std.mem.Allocator, args_iterator: *std.process.ArgIterato
         try dir_walker.addFileWithPath(file, path);
     }
 
-    std.sort.heap(DirWalker.FileTask, file_tasks.items, @as(SortContext, .{
+    sortWithContext(file_tasks.items, .{
         .sort = sort,
         .order = order,
-    }), struct {
-        fn nullLessThan(a: anytype, b: anytype) bool {
-            if (@TypeOf(a) != @TypeOf(b)) @compileError("Cannot compare two values of differing types");
-            if (a == null and b == null) return false;
-            if (a == null and b != null) return true;
-            if (a != null and b == null) return false;
-            if (@TypeOf(a.?, b.?) == []const u8) {
-                return std.mem.order(u8, a.?, b.?) == .lt;
-            } else {
-                return a.? < b.?;
-            }
-        }
-
-        pub fn lessThanFn(ctx: SortContext, a: DirWalker.FileTask, b: DirWalker.FileTask) bool {
-            const is_less_than = switch (ctx.sort) {
-                // .created => nullLessThan(a.created_at_ms, b.created_at_ms),
-                // .modified => nullLessThan(a.modified_at_ms, b.modified_at_ms),
-                .name => std.mem.order(u8, a.task.name, b.task.name) == .lt,
-                .assignment => nullLessThan(a.task.maybe_assigned_to, b.task.maybe_assigned_to),
-                .priority => @intFromEnum(a.task.priority) < @intFromEnum(b.task.priority),
-                .status => @intFromEnum(a.task.status) < @intFromEnum(b.task.status),
-            };
-            return switch (ctx.order) {
-                .ascending => is_less_than,
-                .descending => !is_less_than,
-            };
-        }
-    }.lessThanFn);
+    });
 
     for (file_tasks.items) |file_task| {
         if (hide_details) {

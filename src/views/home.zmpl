@@ -79,15 +79,18 @@
         <tr>
             <th>
                 Name
+                @partial sort_button($.sort_field, $.sort_order, "name")
             </th>
             <th>
                 Tags
             </th>
             <th>
                 Priority
+                @partial sort_button($.sort_field, $.sort_order, "priority")
             </th>
             <th>
                 Assigned To
+                @partial sort_button($.sort_field, $.sort_order, "assignment")
             </th>
             <th>
                 Due By
@@ -250,5 +253,12 @@
         } else {
             setAssigned(selectBox.value);
         }
+    }
+
+    function sortByField(field, order) {
+        const searchParams = new URLSearchParams(location.search);
+        searchParams.set("sort_field", field);
+        searchParams.set("sort_order", order);
+        location.href = location.pathname + "?" + searchParams.toString();
     }
 </script>

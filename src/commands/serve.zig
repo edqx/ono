@@ -7,6 +7,11 @@ const OnoIgnore = @import("../OnoIgnore.zig");
 const Task = @import("../Task.zig");
 const DirWalker = @import("../DirWalker.zig");
 
+const ls = @import("ls.zig");
+const Sort = ls.Sort;
+const Order = ls.Order;
+const SortContext = ls.SortContext;
+
 const createHelpScreenSection = @import("../help_screen.zig").createHelpScreenSection;
 
 const help_screen = "ono serve [...paths] [-hrp]\n\n" ++
@@ -156,7 +161,7 @@ pub fn exec(allocator: std.mem.Allocator, args_iterator: *std.process.ArgIterato
         .port = 57800,
     }, .{
         .cached_at_timestamp = cached_at_timestamp,
-        .files = dir_walker.collector.items,
+        .files = file_tasks.items,
         .all_tags = all_tags,
         .all_assignments = all_assignments,
     });
@@ -229,10 +234,26 @@ fn createCachedAtString(arena: std.mem.Allocator, data: *zmpl.Data, created_at_t
 
 fn getHomePage(handler: Handler, req: *httpz.Request, res: *httpz.Response) !void {
     const query_parameters = try req.query();
+
     const filter_query = query_parameters.get("filter_query") orelse "";
     const filter_tags_string = query_parameters.get("filter_tags") orelse "";
     const filter_assignment = query_parameters.get("filter_assignment") != null;
     const filter_assigned_to_string = query_parameters.get("filter_assigned_to");
+
+    const sort_field_string = query_parameters.get("sort_field") orelse "name";
+    const sort_order_string = query_parameters.get("sort_order") orelse "ascending";
+
+    const sort_field = std.meta.stringToEnum(Sort, sort_field_string) orelse return {
+        res.status = 400;
+        res.body = "Bad Request";
+        return;
+    };
+
+    const sort_order = std.meta.stringToEnum(Order, sort_order_string) orelse return {
+        res.status = 400;
+        res.body = "Bad Request";
+        return;
+    };
 
     var request_filter_tags: std.ArrayListUnmanaged([]const u8) = try .initCapacity(req.arena, std.mem.count(u8, filter_tags_string, ",") + 1);
     var tokenize_tags = std.mem.tokenizeAny(u8, filter_tags_string, ",");
@@ -272,6 +293,9 @@ fn getHomePage(handler: Handler, req: *httpz.Request, res: *httpz.Response) !voi
         try body.put("filter_assigned_to", data.string(assigned_to));
     }
 
+    try body.put("sort_field", data.string(sort_field_string));
+    try body.put("sort_order", data.string(sort_order_string));
+
     const all_tags = try data.array();
     var all_tags_iterator = handler.all_tags.iterator();
     while (all_tags_iterator.next()) |tag| {
@@ -290,6 +314,9 @@ fn getHomePage(handler: Handler, req: *httpz.Request, res: *httpz.Response) !voi
 
     const tasks = try data.array();
 
+    var filtered_tasks: std.ArrayListUnmanaged(DirWalker.FileTask) = try .initCapacity(req.arena, handler.files.len);
+    defer filtered_tasks.deinit(req.arena);
+
     for (handler.files) |file_task| {
         if (!DirWalker.passesFilter(file_task.task, .{
             .maybe_query = if (filter_query.len > 0) filter_query else null,
@@ -297,6 +324,15 @@ fn getHomePage(handler: Handler, req: *httpz.Request, res: *httpz.Response) !voi
             .filter_assignment = filter_assignment,
             .maybe_assigned_to = filter_assigned_to_string,
         })) continue;
+        filtered_tasks.appendAssumeCapacity(file_task);
+    }
+
+    ls.sortWithContext(filtered_tasks.items, .{
+        .sort = sort_field,
+        .order = sort_order,
+    });
+
+    for (filtered_tasks.items) |file_task| {
         try tasks.append(try createTaskObject(&data, file_task));
     }
 
